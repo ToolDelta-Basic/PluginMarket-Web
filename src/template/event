@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }}</title>
+    <link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary-color: #ff4757;
+            --secondary-color: #57606f;
+            --accent-color: #ffa502;
+            --bg-color: #f1f2f6;
+            --card-bg: #2d2d2d;
+            --card-border: #444;
+            --terminal-red: #ff5f56;
+            --terminal-yellow: #ffbd2e;
+            --terminal-green: #27c93f;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body, html {
+            padding: 0;
+            margin: 0;
+            font-family: 'Quicksand', sans-serif;
+            font-weight: 400;
+            background-color: var(--bg-color);
+            color: #333;
+            height: 100%;
+            overflow-x: hidden;
+        }
+
+        .container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            padding: 20px;
+            position: relative;
+            overflow: hidden;
+            text-align: center;
+        }
+
+        .error-container {
+            text-align: center;
+            margin-bottom: 40px;
+            z-index: 2;
+            animation: fadeIn 1s ease-out both;
+            max-width: 800px;
+            width: 100%;
+            padding: 0 20px;
+        }
+
+        .error-code {
+            font-size: clamp(80px, 20vw, 180px);
+            margin: 0;
+            padding: 0;
+            font-weight: 700;
+            color: var(--primary-color);
+            text-shadow: 3px 3px 0 rgba(0,0,0,0.1);
+            line-height: 1;
+            position: relative;
+            display: inline-block;
+        }
+
+        .error-code::after {
+            content: '';
+            position: absolute;
+            bottom: -10px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 80px;
+            height: 4px;
+            background: var(--accent-color);
+            border-radius: 2px;
+        }
+
+        .error-title {
+            margin: 10px 0 0;
+            padding: 0;
+            font-size: clamp(24px, 5vw, 42px);
+            letter-spacing: 3px;
+            color: var(--secondary-color);
+            font-weight: 500;
+            animation: fadeIn 0.8s ease-out 0.3s both;
+        }
+
+        .error-message {
+            margin: 20px auto 0;
+            max-width: 600px;
+            font-size: clamp(16px, 3vw, 18px);
+            line-height: 1.6;
+            color: var(--secondary-color);
+            opacity: 0.9;
+            animation: fadeIn 0.8s ease-out 0.6s both;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* Background animation elements */
+        .bg-elements {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            z-index: 0;
+        }
+
+        .bg-element {
+            position: absolute;
+            background: rgba(255, 165, 2, 0.08);
+            border-radius: 50%;
+            animation: float 20s infinite linear;
+            filter: blur(2px);
+        }
+
+        @keyframes float {
+            0% {
+                transform: translateY(100vh) rotate(0deg) scale(0.5);
+                opacity: 0;
+            }
+            10% {
+                opacity: 0.5;
+            }
+            90% {
+                opacity: 0.5;
+            }
+            100% {
+                transform: translateY(-100px) rotate(720deg) scale(1);
+                opacity: 0;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Background animation elements -->
+        <div class="bg-elements" id="bgElements"></div>
+        
+        <div class="error-container">
+            <h1 class="error-code">{{ error_code }}</h1>
+            <h2 class="error-title">SERVER ERROR</h2>
+            <p class="error-message">{{ error_msg }}</p>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const bgElements = document.getElementById('bgElements');
+            
+            // Create background animation elements
+            function createBgElements() {
+                const count = Math.floor(window.innerWidth / 30); // Fewer elements for performance
+                for (let i = 0; i < count; i++) {
+                    const element = document.createElement('div');
+                    element.classList.add('bg-element');
+                    
+                    const size = Math.random() * 120 + 30;
+                    const posX = Math.random() * window.innerWidth;
+                    const delay = Math.random() * 20;
+                    const duration = Math.random() * 25 + 15;
+                    
+                    element.style.width = `${size}px`;
+                    element.style.height = `${size}px`;
+                    element.style.left = `${posX}px`;
+                    element.style.top = `${window.innerHeight + 100}px`;
+                    element.style.animationDelay = `${delay}s`;
+                    element.style.animationDuration = `${duration}s`;
+                    
+                    bgElements.appendChild(element);
+                }
+            }
+            
+            createBgElements();
+
+            // Responsive adjustments
+            function handleResize() {
+                // Clear existing background elements
+                while (bgElements.firstChild) {
+                    bgElements.removeChild(bgElements.firstChild);
+                }
+                // Recreate with new dimensions
+                createBgElements();
+            }
+
+            // Debounce resize handler
+            let resizeTimer;
+            window.addEventListener('resize', function() {
+                clearTimeout(resizeTimer);
+                resizeTimer = setTimeout(handleResize, 250);
+            });
+        });
+    </script>
+</body>
+</html>

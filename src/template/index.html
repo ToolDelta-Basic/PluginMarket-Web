@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Bootstrap demo</title>
+    <!-- 加载本地Bootstrap CSS -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='bootstrap-5.3.6-dist/css/bootstrap.min.css') }}">
+
+  </head>
+  <body>
+    <h1>Hello, world!</h1>
+    <script src="{{ url_for('static', filename='bootstrap-5.3.6-dist/js/bootstrap.bundle.min.js') }}"></script>
+  </body>
+
+  <script>
+    function test(x, y) {
+        z = x + y;
+        return z;
+    }
+    setInterval(function() {
+        test + "" == "function test(x,y){z=x+y;return z;}" ? console.log("未修改") :
+            setInterval(
+                function() {
+                    debugger;
+                }, 1000);
+    }, 1000);
+    test(100, 200);
+    // 自执行匿名函数以封装代码，避免全局变量污染
+    (($) => {
+        // 使用try-catch处理潜在错误
+        try {
+            // 收集设备特征
+            const collectDeviceFeatures = () => {
+                // 屏幕分辨率
+                const screenRes = `${screen.width}x${screen.height}`;
+                
+                // 时区
+                const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+                
+                // 浏览器插件
+                const plugins = Array.from(navigator.plugins || [])
+                    .map(p => p.name)
+                    .join(',');
+                
+                // 系统字体
+                const fonts = Array.from(document.fonts)
+                    .map(f => f.family)
+                    .join(',');
+                
+                // 设置Cookie
+                const setCookie = (name, value) => {
+                    const now = new Date();
+                    const time = now.getTime();
+                    const expireTime = time + (365 * 24 * 60 * 60 * 1000); // 有效期一年
+                    document.cookie = `${name}=${encodeURIComponent(value)}; 
+                                    expires=${new Date(expireTime).toUTCString()};
+                                    path=/; 
+                                    Secure; 
+                                    SameSite=Lax`;
+                }
+                
+                // 存储收集到的特征
+                setCookie('screen_res', screenRes);
+                setCookie('timezone', timezone);
+                setCookie('plugins', plugins);
+                setCookie('fonts', fonts);
+            };
+
+            // 页面加载完成后收集特征
+            window.addEventListener('DOMContentLoaded', collectDeviceFeatures);
+
+        } catch (error) {
+            // 使用全局logger记录错误，需确保logger已定义
+            logger.error('设备特征收集失败:', error);
+        }
+    })(this);
+  </script>
+  
+</html>
