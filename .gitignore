@@ -1,2 +1,9 @@
 ip_bans.json
 ban_manager.db
+plugin_categories.json
+plugin_descriptions.json
+.gitignore
+src/static/background/001.png
+plugin_stats.db
+.gitignore
+src/.well-known/appspecific/com.chrome.devtools.json

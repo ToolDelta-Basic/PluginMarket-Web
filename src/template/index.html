@@ -1,80 +1,592 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-  <head>
+
+<head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Bootstrap demo</title>
-    <!-- 加载本地Bootstrap CSS -->
+    <title>ToolDelta - 插件市场 网页版</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='bootstrap-5.3.6-dist/css/bootstrap.min.css') }}">
-
-  </head>
-  <body>
-    <h1>Hello, world!</h1>
-    <script src="{{ url_for('static', filename='bootstrap-5.3.6-dist/js/bootstrap.bundle.min.js') }}"></script>
-  </body>
-
-  <script>
-    function test(x, y) {
-        z = x + y;
-        return z;
-    }
-    setInterval(function() {
-        test + "" == "function test(x,y){z=x+y;return z;}" ? console.log("未修改") :
-            setInterval(
-                function() {
-                    debugger;
-                }, 1000);
-    }, 1000);
-    test(100, 200);
-    // 自执行匿名函数以封装代码，避免全局变量污染
-    (($) => {
-        // 使用try-catch处理潜在错误
-        try {
-            // 收集设备特征
-            const collectDeviceFeatures = () => {
-                // 屏幕分辨率
-                const screenRes = `${screen.width}x${screen.height}`;
-                
-                // 时区
-                const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-                
-                // 浏览器插件
-                const plugins = Array.from(navigator.plugins || [])
-                    .map(p => p.name)
-                    .join(',');
-                
-                // 系统字体
-                const fonts = Array.from(document.fonts)
-                    .map(f => f.family)
-                    .join(',');
-                
-                // 设置Cookie
-                const setCookie = (name, value) => {
-                    const now = new Date();
-                    const time = now.getTime();
-                    const expireTime = time + (365 * 24 * 60 * 60 * 1000); // 有效期一年
-                    document.cookie = `${name}=${encodeURIComponent(value)}; 
-                                    expires=${new Date(expireTime).toUTCString()};
-                                    path=/; 
-                                    Secure; 
-                                    SameSite=Lax`;
-                }
-                
-                // 存储收集到的特征
-                setCookie('screen_res', screenRes);
-                setCookie('timezone', timezone);
-                setCookie('plugins', plugins);
-                setCookie('fonts', fonts);
-            };
-
-            // 页面加载完成后收集特征
-            window.addEventListener('DOMContentLoaded', collectDeviceFeatures);
-
-        } catch (error) {
-            // 使用全局logger记录错误，需确保logger已定义
-            logger.error('设备特征收集失败:', error);
+    <link rel="stylesheet" href="{{ url_for('static', filename='bootstrap-icons/font/bootstrap-icons.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/themes/prism-tomorrow.min.css">
+    <style>
+        :root {
+            --primary-color: #0d6efd;
+            --secondary-color: #6c757d;
+            --dark-bg: #121212;
+            --darker-bg: #0a0a0a;
+            --card-bg: #1e1e1e;
+            --text-light: #f0f0f0;
+            --text-muted: #aaaaaa;
+            --font-family-base: 'Poppins', sans-serif;
         }
-    })(this);
-  </script>
-  
+
+        body {
+            font-family: var(--font-family-base);
+            background-color: var(--dark-bg);
+            color: var(--text-light);
+            line-height: 1.6;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        h1,
+        h2,
+        h3,
+        h4,
+        h5,
+        h6 {
+            font-family: 'Poppins', sans-serif;
+            color: var(--text-light);
+        }
+
+        .hero-section {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            position: relative;
+            padding: 80px 0 40px;
+            color: var(--text-light);
+            overflow: hidden;
+        }
+
+        .hero-section::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: url('https://images.unsplash.com/photo-1639762681057-408e52192e55?q=80&w=1932&auto=format&fit=crop') center/cover;
+            filter: blur(6px) brightness(0.4);
+            z-index: -1;
+        }
+
+        .hero-content {
+            max-width: 800px;
+            z-index: 1;
+            text-align: center;
+            padding: 0 20px;
+        }
+
+        .hero-content h1 {
+            font-size: 3.5rem;
+            font-weight: 700;
+            margin-bottom: 1.5rem;
+            text-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+        }
+
+        .hero-content .lead {
+            font-size: 1.5rem;
+            margin-bottom: 2.5rem;
+            text-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+        }
+
+        .btn-lg {
+            padding: 0.8rem 1.8rem;
+            font-size: 1.2rem;
+            border-radius: 8px;
+        }
+
+        /* 代码窗口样式 - 优化为正方形 */
+        .code-window-container {
+            display: flex;
+            justify-content: center;
+            width: 100%;
+            margin-top: 40px;
+            z-index: 2;
+        }
+
+        .code-window {
+            background: var(--darker-bg);
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            width: 100%;
+            max-width: 650px;
+            aspect-ratio: 1.2;
+            /* 接近正方形的比例 */
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            border: 1px solid #333;
+        }
+
+        .window-controls {
+            display: flex;
+            gap: 8px;
+            padding: 12px 15px;
+            background: #252526;
+            border-bottom: 1px solid #333;
+        }
+
+        .control {
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            border: none;
+            cursor: pointer;
+        }
+
+        .red {
+            background: #ff5f57;
+        }
+
+        .yellow {
+            background: #ffbd2e;
+        }
+
+        .green {
+            background: #27c93f;
+        }
+
+        .code-area {
+            padding: 20px;
+            font-family: 'Fira Code', 'Menlo', monospace;
+            font-size: 15px;
+            line-height: 1.6;
+            overflow: auto;
+            flex-grow: 1;
+            background: #1e1e1e;
+        }
+
+        pre {
+            margin: 0;
+        }
+
+        .copy-btn {
+            background: #2d2d2d;
+            border: none;
+            color: #b3b3b3;
+            cursor: pointer;
+            padding: 5px 12px;
+            border-radius: 4px;
+            font-size: 0.85rem;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            transition: all 0.2s;
+        }
+
+        .copy-btn:hover {
+            background: #3a3a3a;
+            color: #ffffff;
+        }
+
+        .feature-card {
+            background: var(--card-bg);
+            border: none;
+            border-radius: 12px;
+            transition: transform 0.3s, box-shadow 0.3s;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        .feature-card:hover {
+            transform: translateY(-8px);
+            box-shadow: 0 15px 30px rgba(0, 0, 0, 0.3);
+        }
+
+        .feature-card .card-body {
+            padding: 30px;
+        }
+
+        .feature-card i {
+            font-size: 2.5rem;
+            margin-bottom: 20px;
+            color: var(--primary-color);
+        }
+
+        .feature-card h2 {
+            font-size: 1.8rem;
+            margin-bottom: 15px;
+        }
+
+        .section-title {
+            font-size: 2.5rem;
+            text-align: center;
+            margin-bottom: 50px;
+            position: relative;
+            padding-bottom: 20px;
+        }
+
+        .section-title::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 100px;
+            height: 4px;
+            background: var(--primary-color);
+            border-radius: 2px;
+        }
+
+        .section-padding {
+            padding: 100px 0;
+        }
+
+        .getting-started {
+            background-color: #0a0a0a;
+            border-top: 1px solid #333;
+            border-bottom: 1px solid #333;
+        }
+
+        .code-block {
+            background: #1e1e1e;
+            border-radius: 8px;
+            padding: 20px;
+            font-family: 'Fira Code', monospace;
+            font-size: 16px;
+            position: relative;
+            border: 1px solid #333;
+        }
+
+        .stats-container {
+            display: flex;
+            justify-content: center;
+            gap: 40px;
+            margin: 50px 0;
+            flex-wrap: wrap;
+        }
+
+        .stat-card {
+            background: rgba(13, 110, 253, 0.1);
+            border-radius: 12px;
+            padding: 30px;
+            text-align: center;
+            min-width: 220px;
+            border: 1px solid rgba(13, 110, 253, 0.3);
+        }
+
+        .stat-card .number {
+            font-size: 3rem;
+            font-weight: 700;
+            color: var(--primary-color);
+            margin-bottom: 10px;
+        }
+
+        .stat-card .label {
+            font-size: 1.2rem;
+            color: var(--text-muted);
+        }
+
+        .navbar {
+            background: linear-gradient(135deg, var(--accent) 0%, var(--accent-light) 100%);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+            height: 70px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .navbar-brand {
+            font-weight: 700;
+            font-size: 1.5rem;
+            color: white !important;
+            letter-spacing: 0.5px;
+            padding: 0;
+            margin: 0;
+        }
+
+        .nav-link {
+            color: rgba(255, 255, 255, 0.85) !important;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            font-size: 1rem;
+            padding: 0.5rem 1rem;
+            border-radius: 5px;
+            margin: 0 2px;
+        }
+
+        .nav-link:hover,
+        .nav-link.active {
+            color: white !important;
+            background: rgba(255, 255, 255, 0.15);
+        }
+
+        .nav-link i {
+            transition: transform 0.3s ease;
+        }
+
+        .nav-link:hover i {
+            transform: scale(1.15);
+        }
+
+        .navbar-toggler {
+            border: none;
+            outline: none;
+            box-shadow: none;
+        }
+
+        .nav-link {
+            color: var(--text-muted) !important;
+            font-weight: 500;
+            transition: color 0.3s;
+            position: relative;
+        }
+
+        .nav-link:hover,
+        .nav-link.active {
+            color: var(--text-light) !important;
+        }
+
+        .nav-link::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 0;
+            height: 2px;
+            background: var(--primary-color);
+            transition: width 0.3s;
+        }
+
+        .nav-link:hover::after,
+        .nav-link.active::after {
+            width: 100%;
+        }
+
+        footer {
+            background: #0a0a0a;
+            border-top: 1px solid #333;
+            padding: 30px 0;
+        }
+
+        /* 响应式调整 */
+        @media (max-width: 768px) {
+            .hero-content h1 {
+                font-size: 2.5rem;
+            }
+
+            .hero-content .lead {
+                font-size: 1.2rem;
+            }
+
+            .stats-container {
+                gap: 20px;
+            }
+
+            .stat-card {
+                min-width: 150px;
+                padding: 20px;
+            }
+
+            .stat-card .number {
+                font-size: 2rem;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <!-- Navigation -->
+    <nav class="navbar navbar-expand-lg navbar-dark fixed-top">
+        <div class="container">
+            <a class="navbar-brand" href="#"><i class="bi bi-plug me-2"></i>PluginMarket</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <a class="nav-link active" href="/"><i class="bi bi-house me-1"></i>首页</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/plugin"><i class="bi bi-box me-1"></i>插件</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#"><i class="bi bi-journal-code me-1"></i>文档</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#"><i class="bi bi-people me-1"></i>社区</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section class="hero-section">
+        <div class="container hero-content">
+            <h1 class="display-1">ToolDelta 插件市场</h1>
+            <p class="lead">ToolDelta 官方插件市场源，现已拥有 <span class="text-primary fw-bold">108 个插件</span> 和 <span class="text-primary fw-bold">3 个整合包</span>，助力您的服务器开发！</p>
+
+            <div class="stats-container">
+                <div class="stat-card">
+                    <div class="number">{{ plugin_count }}</div>
+                    <div class="label">优质插件</div>
+                </div>
+                <div class="stat-card">
+                    <div class="number">{{ packages_count }}</div>
+                    <div class="label">精选整合包</div>
+                </div>
+                <div class="stat-card">
+                    <div class="number">20</div>
+                    <div class="label">优质创作者</div>
+                </div>
+            </div>
+
+            <div class="mt-4">
+                <a href="/plugin" class="btn btn-primary btn-lg me-3"><i class="bi bi-download me-2"></i>立即开始</a>
+                <a href="/" class="btn btn-outline-light btn-lg"><i class="bi bi-book me-2"></i>查看文档</a>
+            </div>
+        </div>
+
+
+        <section class="getting-started section-padding">
+            <div class="container">
+                <h2 class="section-title">快速开始</h2>
+                <div class="row justify-content-center">
+                    <div class="col-lg-8">
+                        <div class="code-block">
+                            <pre><code class="language-bash">
+╔═════════════════════════════════════════════════════════════════════════╗
+║████████╗ ██████╗  ██████╗ ██╗     ██████╗ ███████╗██╗  ████████╗ █████╗ ║
+║╚══██╔══╝██╔═══██╗██╔═══██╗██║     ██╔══██╗██╔════╝██║  ╚══██╔══╝██╔══██╗║
+║   ██║   ██║   ██║██║   ██║██║     ██║  ██║█████╗  ██║     ██║   ███████║║
+║   ██║   ██║   ██║██║   ██║██║     ██║  ██║██╔══╝  ██║     ██║   ██╔══██║║
+║   ██║   ╚██████╔╝╚██████╔╝███████╗██████╔╝███████╗███████╗██║   ██║  ██║║
+║   ╚═╝    ╚═════╝  ╚═════╝ ╚══════╝╚═════╝ ╚══════╝╚══════╝╚═╝   ╚═╝  ╚═╝║
+╚═════════════════════════════════════════════════════════════════════════╝
+请选择启动模式(使用启动参数 -l <启动模式> 可以跳过该页面):
+1 - 启动 ToolDelta
+2 - 打开插件管理器
+3 - 打开插件市场
+4 - 初始化所有插件配置
+5 - 修改启动配置
+6 - 开启直接启动模式
+q - 退出
+请选择: 3
+
+ToolDelta插件市场 Official: 欢迎使用 ToolDelta 插件市场.
+------------------------------
+请选择搜索方式: 
+1 -     按插件名
+2 -     按插件作者名
+3 -     按插件 ID
+4 -     随便逛逛
+其它    退出
+请输入选项: 1
+请输入插件名(中的关键词): PluginMarketWeb
+1/1页, 输入+/-翻页
+输入插件序号选中插件并查看其下载页
+回车键继续上次操作, q 退出，请输入: 1
+                            </code></pre>
+                            <button class="btn btn-outline-primary mt-3">
+                                <i class="bi bi-clipboard me-2"></i>复制安装命令
+                            </button>
+                        </div>
+                        <p class="text-center text-muted mt-4">立即开始扩展您的服务器功能</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Footer -->
+        <footer>
+            <div class="container">
+                <div class="row">
+                    <div class="col-lg-4 mb-4">
+                        <h3 class="mb-4">ToolDelta 插件市场</h3>
+                        <p>为服务器管理员和开发者提供高质量的插件资源，助力打造独一无二的游戏体验。</p>
+                    </div>
+                    <div class="col-lg-2 col-md-4 mb-4">
+                        <h5 class="mb-4">快速链接</h5>
+                        <ul class="list-unstyled">
+                            <li class="mb-2"><a href="#" class="text-decoration-none link-light">首页</a></li>
+                            <li class="mb-2"><a href="#" class="text-decoration-none link-light">插件库</a></li>
+                            <li class="mb-2"><a href="#" class="text-decoration-none link-light">文档中心</a></li>
+                            <li class="mb-2"><a href="#" class="text-decoration-none link-light">开发者API</a></li>
+                        </ul>
+                    </div>
+                    <div class="col-lg-2 col-md-4 mb-4">
+                        <h5 class="mb-4">资源</h5>
+                        <ul class="list-unstyled">
+                            <li class="mb-2"><a href="#" class="text-decoration-none link-light">插件开发指南</a></li>
+                            <li class="mb-2"><a href="#" class="text-decoration-none link-light">API参考</a></li>
+                            <li class="mb-2"><a href="#" class="text-decoration-none link-light">示例项目</a></li>
+                            <li class="mb-2"><a href="#" class="text-decoration-none link-light">常见问题</a></li>
+                        </ul>
+                    </div>
+                    <div class="col-lg-4 col-md-4 mb-4">
+                        <h5 class="mb-4">联系我们</h5>
+                        <div class="d-flex gap-3 mb-3">
+                            <a href="#" class="text-decoration-none link-light fs-4"><i class="bi bi-github"></i></a>
+                            <a href="#" class="text-decoration-none link-light fs-4"><i class="bi bi-discord"></i></a>
+                            <a href="#" class="text-decoration-none link-light fs-4"><i class="bi bi-envelope"></i></a>
+                            <a href="#" class="text-decoration-none link-light fs-4"><i class="bi bi-wechat"></i></a>
+                        </div>
+                        <p class="text-muted">© 2023 ToolDelta 插件市场. 保留所有权利</p>
+                    </div>
+                </div>
+            </div>
+        </footer>
+
+        <!-- Bootstrap 5 JS Bundle -->
+        <script src="{{ url_for('static', filename='bootstrap-5.3.6-dist/js/bootstrap.bundle.min.js') }}"></script>
+        <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/prism.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/components/prism-javascript.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/components/prism-bash.min.js"></script>
+</body>
+<script>
+    // 初始化 Prism 高亮
+    document.addEventListener('DOMContentLoaded', function() {
+        Prism.highlightAll();
+    });
+
+    // 控制按钮事件监听
+    const redBtn = document.querySelector('.red');
+    const yellowBtn = document.querySelector('.yellow');
+    const greenBtn = document.querySelector('.green');
+    const copyBtns = document.querySelectorAll('.copy-btn');
+
+    redBtn.addEventListener('click', function() {
+        const window = this.closest('.code-window');
+        window.style.transform = 'scale(0.95)';
+        setTimeout(() => {
+            window.style.display = 'none';
+        }, 300);
+    });
+
+    yellowBtn.addEventListener('click', function() {
+        const window = this.closest('.code-window');
+        window.style.transform = window.style.transform === 'scale(0.9)' ? '' : 'scale(0.9)';
+    });
+
+    greenBtn.addEventListener('click', function() {
+        const window = this.closest('.code-window');
+        window.style.width = window.style.width === '90vw' ? '' : '90vw';
+        window.style.maxWidth = window.style.maxWidth === '90vw' ? '650px' : '90vw';
+    });
+
+    // 复制按钮
+    copyBtns.forEach(btn => {
+        btn.addEventListener('click', function() {
+            const code = this.closest('.code-block, .code-window').querySelector('code');
+            const temp = document.createElement('textarea');
+            temp.value = code.textContent;
+            document.body.appendChild(temp);
+            temp.select();
+            document.execCommand('copy');
+            document.body.removeChild(temp);
+
+            // 显示复制成功反馈
+            const originalText = this.innerHTML;
+            this.innerHTML = '<i class="bi bi-check2"></i> 已复制！';
+            this.classList.add('btn-success');
+            this.classList.remove('btn-outline-primary');
+
+            setTimeout(() => {
+                this.innerHTML = originalText;
+                this.classList.remove('btn-success');
+                this.classList.add('btn-outline-primary');
+            }, 2000);
+        });
+    });
+</script>
+
 </html>
