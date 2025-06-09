@@ -2002,39 +2002,64 @@ class PluginMarketWeb:
         # 修改整合包下载API - 同样使用user_id
         @app.route('/api/package/download/<package_id>', methods=['POST'])
         def api_package_download(package_id):
-            """记录整合包下载"""
+            """记录整合包下载并推送整合包文件"""
             try:
-                # 获取请求中的用户ID
                 data = request.get_json()
-                user_id = data.get('user_id')  # 改为使用user_id
+                user_id = data.get('user_id')
                 
-                # 验证用户ID格式
+                # 验证用户ID
                 if not user_id or len(user_id) != 6 or not user_id.isalpha() or not user_id.isupper():
                     return jsonify({
                         "status": "error",
-                        "message": "无效的用户ID格式，需要6位大写字母"
+                        "message": "无效的用户ID格式"
                     }), 400
+                
                 if user_id not in ws_manager.clients:
                     return jsonify({
                         "status": "error",
-                        "message": "未被注册的ID，请前往ToolDelta确认ID是否正确"
+                        "message": "未被注册的ID"
                     }), 400
-                if package_id in self.plugin_monitor.get_packages():
-                    # 传递用户ID给统计管理器
-                    self.stats_manager.record_package_download(package_id, user_id)
-                    return jsonify({
-                        "status": "success",
-                        "message": f"整合包 {package_id} 下载记录成功"
-                    })
-                else:
+
+                # 获取整合包信息
+                packages = self.plugin_monitor.get_packages()
+                package = packages.get(package_id)
+                if not package:
                     return jsonify({
                         "status": "error",
-                        "message": f"未找到ID为 {package_id} 的整合包"
+                        "message": f"未找到整合包 {package_id}"
                     }), 404
+
+                # 查找整合包文件夹 - 假设在public-repo/Packages目录下
+                package_folder = os.path.join(self.workpath, 'public-repo', package_id)
+                if not os.path.exists(package_folder):
+                    return jsonify({
+                        "status": "error",
+                        "message": "整合包文件夹不存在"
+                    }), 500
+
+                # 压缩整合包文件夹
+                zip_path = shutil.make_archive(package_id, 'zip', package_folder)
+                with open(zip_path, 'rb') as f:
+                    file_data = f.read()
+                os.remove(zip_path)  # 删除临时压缩文件
+
+                # 通过WebSocket发送文件给客户端
+                if not push_file_to_client(user_id, package_id, file_data):
+                    return jsonify({
+                        "status": "error",
+                        "message": "文件推送失败"
+                    }), 500
+
+                # 记录下载统计
+                self.stats_manager.record_package_download(package_id, user_id)
+                return jsonify({
+                    "status": "success",
+                    "message": "整合包下载成功"
+                }), 200
             except Exception as e:
                 return jsonify({
                     "status": "error",
-                    "message": f"记录下载失败: {str(e)}"
+                    "message": f"处理整合包下载失败: {str(e)}"
                 }), 500
 
         
