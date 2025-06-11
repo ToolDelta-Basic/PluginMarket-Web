@@ -856,14 +856,14 @@
         <div class="modal-dialog">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title">请输入您的ID</h5>
+                    <h5 class="modal-title" style="color: rgb(0, 0, 0);">请输入您的ID</h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
                     <div class="mb-3">
-                        <label for="userIdInput" class="form-label">六位大写字母ID</label>
+                        <label for="userIdInput" class="form-label"></label>
                         <input type="text" class="form-control" id="userIdInput" placeholder="例如：ABCDEF" maxlength="6">
-                        <div class="invalid-feedback">请输入六位大写字母</div>
+                        <div class="invalid-feedback">请输入六位ID</div>
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -877,7 +877,7 @@
     <!-- Bootstrap JS -->
     <script src="{{ url_for('static', filename='bootstrap-5.3.6-dist/js/bootstrap.bundle.min.js') }}"></script>
     <script>
-        const API_BASE_URL = 'http://127.0.0.1:8112';
+        const API_BASE_URL = 'http://api.tooldelta.xyz';
         let currentDownload = {
             type: null,
             id: null,

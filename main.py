@@ -5,6 +5,7 @@ import git
 import shutil
 import time
 import colorama
+import subprocess
 import requests
 import signal
 import threading
@@ -28,11 +29,113 @@ from typing import Dict
 from flask_sockets import Sockets, Rule
 from geventwebsocket.handler import WebSocketHandler
 from gevent.pywsgi import WSGIServer
+from gevent import Timeout
 from openai import OpenAI
 
 # 全局锁和事件
 IOLock: threading.RLock = threading.RLock()
 ThreadEvent: threading.Event = threading.Event()
+
+class NatappManager:
+    def __init__(self, log_queue, process_name, tokens):
+        """
+        Natapp 进程管理器
+        
+        :param log_queue: 日志队列
+        :param process_name: 进程名称
+        :param tokens: Natapp 的 authtoken 列表
+        """
+        self.tokens = tokens
+        self.log_queue = log_queue
+        self.process_name = process_name
+        self.processes = []
+        
+        # 确保 natapp 目录存在
+        self.natapp_dir = os.path.join(os.getcwd(), "natapp")
+        if not os.path.exists(self.natapp_dir):
+            os.makedirs(self.natapp_dir)
+    
+    def _log(self, level, title, message):
+        """记录日志到队列"""
+        try:
+            self.log_queue.put((level, title, f"[{self.process_name}] {message}"), timeout=0.1)
+        except Full:
+            # 如果队列满，直接打印到控制台
+            with IOLock:
+                sys.stdout.write(f"[{level}] {title}: [{self.process_name}] {message}\n")
+                sys.stdout.flush()
+    
+    def _run_natapp(self, token):
+        """运行单个 Natapp 进程"""
+        # 构建命令
+        cmd = [
+            os.path.join(self.natapp_dir, "natapp.exe" if sys.platform == "win32" else "natapp"),
+            "-authtoken=" + token
+        ]
+        
+        # 启动进程
+        process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            stdin=subprocess.DEVNULL,
+            creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0,
+            start_new_session=True
+        )
+        
+        return process
+    
+    def start(self):
+        """启动所有 Natapp 进程"""
+        self._log("INFO", "启动", f"启动 {len(self.tokens)} 个 Natapp 进程...")
+        
+        for i, token in enumerate(self.tokens):
+            # 启动进程
+            process = self._run_natapp(token)
+            self.processes.append(process)
+            
+            self._log("SUCC", "启动", f"进程 {i+1} 已启动 (Token: {token[:6]}...)")
+        
+        self._log("SUCC", "启动", "所有 Natapp 进程已启动")
+    
+    def stop(self):
+        """停止所有 Natapp 进程"""
+        self._log("INFO", "停止", "正在停止 Natapp 进程...")
+        for process in self.processes:
+            try:
+                process.terminate()
+            except:  # noqa: E722
+                pass
+        self.processes = []
+        self._log("SUCC", "停止", "所有 Natapp 进程已停止")
+    
+    def status(self):
+        """检查进程状态"""
+        for i, process in enumerate(self.processes):
+            status = "运行中" if process.poll() is None else "已停止"
+            self._log("INFO", "状态", f"进程 {i+1}: Token={self.tokens[i][:6]}..., 状态={status}")
+    
+    def monitor(self):
+        """监控进程状态"""
+        try:
+            while True:
+                all_running = True
+                for i, process in enumerate(self.processes):
+                    if process.poll() is not None:
+                        self._log("INFO", "监控", f"进程 {i+1} (Token: {self.tokens[i][:6]}...) 已停止，退出码: {process.returncode}")
+                        all_running = False
+                
+                if not all_running:
+                    self._log("INFO", "监控", "有 Natapp 进程停止运行")
+                    break
+                
+                time.sleep(5)
+        except KeyboardInterrupt:
+            self._log("INFO", "监控", "监控中断")
+    
+    def __del__(self):
+        """确保退出时停止所有进程"""
+        self.stop()
 
 class GitRepositoryManager:
     def __init__(self, logger, update_interval=60, cleanup_days=30):
@@ -1326,7 +1429,7 @@ class PluginMarketWeb:
         
         self.web_addr: tuple = web_address
         self.api_addr: tuple = api_address
-       
+
         # 初始化仓库管理器，设置更新间隔为每小时，清理未更新30天的仓库
         git_manager = GitRepositoryManager(
             logger=self.logger,
@@ -1402,6 +1505,11 @@ class PluginMarketWeb:
                 target=self._run_service,
                 name="API服务进程",
                 args=("Api", self._create_api_app, self.api_addr),
+                daemon=True
+            ),
+            "Natapp": multiprocessing.Process(
+                target=self._run_natapp,
+                name="隧道服务进程",
                 daemon=True
             ),
         }
@@ -1500,6 +1608,15 @@ class PluginMarketWeb:
         )
         self.listener_thread.start()
     
+    def _run_natapp(self):
+        natapp_manager = NatappManager(
+            self.log_queue, 
+            "Natapp", 
+            ["7d48e3a1f28824c4", "2cf7327bf008d717"]
+        )
+        natapp_manager.start()
+        natapp_manager.monitor()
+
     def _create_base_app(self, service_name: str):
         """创建基础Flask应用"""
         return Flask(
@@ -1515,18 +1632,22 @@ class PluginMarketWeb:
         # 在请求开始时存储请求信息
         @app.before_request
         def store_request_info():
-            ip = request.remote_addr
+            # 优先使用 Natapp 提供的真实客户端 IP
+            real_ip = request.headers.get('X-Real-Ip') or request.headers.get('X-Natapp-Ip')
+            ip = real_ip or request.remote_addr
+            
             g.request_info = {
                 'start_time': time.time(),
                 'method': request.method,
                 'path': request.path,
-                'remote_addr': ip
+                'remote_addr': ip,
+                'real_ip': ip  # 存储真实 IP 用于后续使用
             }
             
-            # 检查IP是否被封禁
+            # 检查IP是否被封禁（使用真实 IP）
             if self.ban_manager.is_ip_banned(ip):
                 log_func("WARN", "封禁", 
-                         f"来自被封禁IP的访问: {ip} 尝试访问 {request.path}")
+                        f"来自被封禁IP的访问: {ip} 尝试访问 {request.path}")
                 return render_template(
                     'event', 
                     title="访问被拒绝",
@@ -1534,14 +1655,14 @@ class PluginMarketWeb:
                     error_msg=f"您的IP地址已被封禁，解封时间:{self.ban_manager.get_ip_expiry(ip)}"
                 ), 403
             
-            # 生成设备指纹
+            # 生成设备指纹（使用真实 IP）
             fingerprint = self.ban_manager.generate_fingerprint(request)
             g.fingerprint = fingerprint
             
             # 检查设备是否被封禁
             if self.ban_manager.is_device_banned(fingerprint):
                 log_func("WARN", "封禁", 
-                         f"来自被封禁设备的访问: {fingerprint} (IP: {ip}) 尝试访问 {request.path}")
+                        f"来自被封禁设备的访问: {fingerprint} (IP: {ip}) 尝试访问 {request.path}")
                 return render_template(
                     'event', 
                     title="访问被拒绝",
@@ -1549,22 +1670,23 @@ class PluginMarketWeb:
                     error_msg=f"您的设备已被封禁，解封时间:{self.ban_manager.get_device_expiry(fingerprint)}"
                 ), 403
             
-            # 记录设备信息
+            # 记录设备信息（使用真实 IP）
             self.ban_manager.record_device(fingerprint, ip)
             
             # 设置指纹Cookie
             response = make_response()
             response.set_cookie('device_fingerprint', fingerprint, max_age=365*24*3600, httponly=True, samesite='Strict')
-            # return response
-        
+            
         # 在请求结束后记录完整的日志（包含状态码）
         @app.after_request
         def log_request_info(response):
-            # 从全局g对象获取请求信息
             request_info = getattr(g, 'request_info', {})
             if not request_info:
                 return response
                 
+            # 使用真实 IP 记录日志
+            ip = request_info.get('real_ip', request_info.get('remote_addr', ''))
+            
             # 计算请求耗时
             elapsed = time.time() - request_info.get('start_time', time.time())
             elapsed_str = f"{elapsed:.3f}s"
@@ -1577,11 +1699,11 @@ class PluginMarketWeb:
             elif status_code >= 300:
                 status_color = colorama.Fore.YELLOW
             
-            # 记录完整日志（包含状态码和耗时）
+            # 记录完整日志（包含真实 IP）
             log_func("INFO", "请求", 
                 f"{colorama.Fore.CYAN}{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | "
                 f"{request_info.get('method', ''):>6} | "
-                f"{request_info.get('remote_addr', ''):15} | "
+                f"{ip:15} | "  # 使用真实 IP
                 f"{request_info.get('path', '')} | "
                 f"{status_color}{status_code} | "
                 f"{elapsed_str}{colorama.Style.RESET_ALL}")
@@ -2023,6 +2145,7 @@ class PluginMarketWeb:
                 # 获取整合包信息
                 packages = self.plugin_monitor.get_packages()
                 package = packages.get(package_id)
+                plugins = self.plugin_monitor.get_plugins()
                 if not package:
                     return jsonify({
                         "status": "error",
@@ -2030,25 +2153,26 @@ class PluginMarketWeb:
                     }), 404
 
                 # 查找整合包文件夹 - 假设在public-repo/Packages目录下
-                package_folder = os.path.join(self.workpath, 'public-repo', package_id)
-                if not os.path.exists(package_folder):
-                    return jsonify({
-                        "status": "error",
-                        "message": "整合包文件夹不存在"
-                    }), 500
+                for plugin_id in package["plugin_ids"]:
+                    package_folder = os.path.join(self.workpath, 'public-repo', plugins.get(plugin_id)["name"])
+                    if not os.path.exists(package_folder):
+                        return jsonify({
+                            "status": "error",
+                            "message": "整合包文件夹不存在"
+                        }), 500
 
-                # 压缩整合包文件夹
-                zip_path = shutil.make_archive(package_id, 'zip', package_folder)
-                with open(zip_path, 'rb') as f:
-                    file_data = f.read()
-                os.remove(zip_path)  # 删除临时压缩文件
+                    # 压缩整合包文件夹
+                    zip_path = shutil.make_archive(plugin_id, 'zip', package_folder)
+                    with open(zip_path, 'rb') as f:
+                        file_data = f.read()
+                    os.remove(zip_path)  # 删除临时压缩文件
 
-                # 通过WebSocket发送文件给客户端
-                if not push_file_to_client(user_id, package_id, file_data):
-                    return jsonify({
-                        "status": "error",
-                        "message": "文件推送失败"
-                    }), 500
+                    # 通过WebSocket发送文件给客户端
+                    if not push_file_to_client(user_id, plugin_id, file_data):
+                        return jsonify({
+                            "status": "error",
+                            "message": "文件推送失败"
+                        }), 500
 
                 # 记录下载统计
                 self.stats_manager.record_package_download(package_id, user_id)
@@ -2483,8 +2607,12 @@ class PluginMarketWeb:
         @sockets.route('/api/socket')
         def api_socket(ws_client):
             """WebSocket端点"""
-            addr = f"{ws_client.environ['REMOTE_ADDR']}:{ws_client.environ['REMOTE_PORT']}"
-            
+            # 优先使用 Natapp 提供的真实客户端 IP
+            real_ip = ws_client.environ.get('HTTP_X_REAL_IP') or ws_client.environ.get('HTTP_X_NATAPP_IP')
+            if real_ip:
+                addr = f"{real_ip}:{ws_client.environ['REMOTE_PORT']}"
+            else:
+                addr = f"{ws_client.environ['REMOTE_ADDR']}:{ws_client.environ['REMOTE_PORT']}"
             # 获取设备指纹
             try:
                 # 从Cookie获取设备指纹
@@ -2504,7 +2632,7 @@ class PluginMarketWeb:
                     log_func("WARN", "通信", f"{addr} | 未提供ID，关闭连接")
                     ws_client.close()
                     return
-                
+
                 # 解析客户端发送的初始消息
                 try:
                     init_data = json.loads(init_message)
@@ -2518,7 +2646,7 @@ class PluginMarketWeb:
                     log_func("WARN", "通信", f"{addr} | 无效的初始消息格式")
                     ws_client.close()
                     return
-                
+
                 # 添加客户端（使用客户端提供的user_id）
                 client_id, error = ws_manager.add_client(ws_client, addr, user_id)
                 if error:
@@ -2530,12 +2658,12 @@ class PluginMarketWeb:
                     log_func("WARN", "通信", f"{addr} | 添加客户端失败: {error}")
                     ws_client.close()
                     return
-                
+
                 # 在客户端信息中存储设备指纹
                 with ws_manager.lock:
                     if client_id in ws_manager.clients:
                         ws_manager.clients[client_id]['fingerprint'] = fingerprint
-                
+
                 # 发送欢迎消息
                 welcome_msg = json.dumps({
                     "type": "welcome",
@@ -2545,16 +2673,71 @@ class PluginMarketWeb:
                 })
                 ws_client.send(welcome_msg)
                 
+                # 心跳检测参数
+                HEARTBEAT_INTERVAL = 30  # 心跳间隔30秒
+                last_heartbeat = time.time()
+                
                 # 保持连接活跃
                 while not ws_client.closed:
-                    message = ws_client.receive()
-                    if message is None:
-                        continue
+                    # 检查心跳超时
+                    if time.time() - last_heartbeat > HEARTBEAT_INTERVAL:
+                        # 发送心跳包
+                        heartbeat_msg = json.dumps({
+                            "type": "heartbeat",
+                            "timestamp": datetime.datetime.now().isoformat()
+                        })
+                        try:
+                            ws_client.send(heartbeat_msg)
+                            last_heartbeat = time.time()
+                            log_func("DEBUG", "通信", f"{addr} | {client_id} | 发送心跳包")
+                        except Exception as e:
+                            log_func("ERROR", "通信", f"{addr} | {client_id} | 发送心跳包失败: {str(e)}")
+                            break
                     
-                    # 记录收到的消息
-                    log_func("DEBUG", "通信", 
-                            f"{addr} | {client_id} | 收到消息: {message[:100]}")
-            
+                    try:
+                        # 使用 gevent 的超时机制替代 timeout 参数
+                        with Timeout(1, False):  # 1秒超时，超时不抛出异常
+                            message = ws_client.receive()
+                            if message is None:
+                                continue
+                            
+                            # 更新心跳时间（任何有效消息都视为心跳）
+                            last_heartbeat = time.time()
+                            
+                            # 记录收到的消息
+                            log_func("DEBUG", "通信", f"{addr} | {client_id} | 收到消息: {message[:100]}")
+                            
+                            # 尝试解析JSON消息
+                            try:
+                                data = json.loads(message)
+                                
+                                # 添加对客户端心跳包的处理
+                                if data.get('type') == 'heartbeat':  # 处理客户端发送的心跳包
+                                    # 发送心跳确认
+                                    ack_msg = json.dumps({
+                                        "type": "heartbeat_ack",
+                                        "timestamp": datetime.datetime.now().isoformat()
+                                    })
+                                    ws_client.send(ack_msg)
+                                    log_func("DEBUG", "通信", f"{addr} | {client_id} | 收到心跳包并回复确认")
+                                    continue
+                                
+                                # 处理心跳确认（来自客户端对服务器心跳的响应）
+                                if data.get('type') == 'heartbeat_ack':
+                                    log_func("DEBUG", "通信", f"{addr} | {client_id} | 收到心跳确认")
+                                    last_heartbeat = time.time()  # 更新最后活动时间
+                                    continue
+                            except json.JSONDecodeError:
+                                pass  # 忽略非JSON消息
+                    except Timeout:
+                        # 超时后继续循环
+                        continue
+                    except Exception as e:
+                        if "timed out" not in str(e):
+                            log_func("ERROR", "通信", 
+                                    f"{addr} | {client_id} | 通信异常 -> {str(e)}")
+                        break
+        
             except Exception as e:
                 log_func("ERROR", "通信", 
                         f"{addr} | {client_id if 'client_id' in locals() else '未知'} | 通信异常 -> {str(e)}")
